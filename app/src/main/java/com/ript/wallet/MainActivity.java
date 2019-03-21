@@ -24,7 +24,12 @@ import butterknife.ButterKnife;
 import butterknife.OnClick;
 import okhttp3.Call;
 import okhttp3.Callback;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
 import okhttp3.Response;
+import okhttp3.WebSocket;
+import okhttp3.WebSocketListener;
+import okio.ByteString;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -35,6 +40,8 @@ public class MainActivity extends AppCompatActivity {
     public String userAddress;
     public JSONArray Jarray;
     public JSONObject jsonObject;
+    private TextView output;
+    public OkHttpClient client;
 
     HashMap<String, String> map = new HashMap<>();
 
@@ -94,6 +101,8 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
         ButterKnife.bind(this);
 
+        client = new OkHttpClient();
+
         mTextMessage = (TextView) findViewById(R.id.message);
         BottomNavigationView navigation = (BottomNavigationView) findViewById(R.id.navigation);
         navigation.setOnNavigationItemSelectedListener(mOnNavigationItemSelectedListener);
@@ -103,7 +112,8 @@ public class MainActivity extends AppCompatActivity {
     public void loadDisplay(){
         //startActivity(new Intent(MainActivity.this, gDaxFeeder.class));
 
-        setupDisplay();
+        start();
+        //setupDisplay();
     }
 
 
@@ -148,6 +158,49 @@ public class MainActivity extends AppCompatActivity {
                     });
         } catch (IOException e) {
             e.printStackTrace();
+        }
+    }
+    private void start() {
+        Request request = new Request.Builder().url("wss://ws-feed.gdax.com").build();
+        gdaxWebSocketListener listener = new gdaxWebSocketListener();
+        WebSocket ws = client.newWebSocket(request, listener);
+        client.dispatcher().executorService().shutdown();
+    }
+    private void output(final String txt) {
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                rAddress.setText(output.getText().toString() + "\n\n" + txt);
+            }
+        });
+    }
+
+
+
+
+
+    private final class gdaxWebSocketListener extends WebSocketListener {
+        private static final int NORMAL_CLOSURE_STATUS = 1000;
+
+
+
+        @Override
+        public void onOpen(WebSocket webSocket, Response response) {
+            webSocket.send("");
+            webSocket.close(NORMAL_CLOSURE_STATUS, "Goodbye !");
+        }
+        @Override
+        public void onMessage(WebSocket webSocket, String text) {
+            rAddress.setText("Receiving : " + text);
+        }
+        @Override
+        public void onClosing(WebSocket webSocket, int code, String reason) {
+            webSocket.close(NORMAL_CLOSURE_STATUS, null);
+            rAddress.setText("Closing : " + code + " / " + reason);
+        }
+        @Override
+        public void onFailure(WebSocket webSocket, Throwable t, Response response) {
+            rAddress.setText("Error : " + t.getMessage());
         }
     }
 
