@@ -16,7 +16,7 @@ import com.tinder.scarlet.ws.Send
 import io.reactivex.Flowable
 import io.reactivex.internal.operators.flowable.FlowableBlockingSubscribe.subscribe
 
-import kotlinx.android.synthetic.main.activity_g_dax_ticker.*
+//import kotlinx.android.synthetic.main.activity_g_dax_ticker.*
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
 
@@ -29,8 +29,8 @@ class gDaxTicker : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_g_dax_ticker)
-        setSupportActionBar(toolbar)
+//        setContentView(R.layout.activity_g_dax_ticker)
+//        setSupportActionBar(toolbar)
 
         val okHttpClientKot = OkHttpClient.Builder()
                 .connectTimeout(10, TimeUnit.SECONDS)
@@ -62,10 +62,6 @@ class gDaxTicker : AppCompatActivity() {
         })
 
 
-        fab.setOnClickListener { view ->
-            Snackbar.make(view, "Replace with your own action", Snackbar.LENGTH_LONG)
-                    .setAction("Action", null).show()
-        }
     }
 
     interface GdaxService {
