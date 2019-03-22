@@ -5,6 +5,7 @@ import android.os.Bundle;
 import android.support.annotation.NonNull;
 import android.support.design.widget.BottomNavigationView;
 import android.support.v7.app.AppCompatActivity;
+import android.util.Log;
 import android.view.MenuItem;
 import android.widget.Button;
 import android.widget.EditText;
@@ -12,12 +13,18 @@ import android.widget.TextView;
 
 import com.ript.wallet.utils.rHelper;
 
+import org.java_websocket.client.WebSocketClient;
+import org.java_websocket.handshake.ServerHandshake;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.IOException;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.util.HashMap;
+
+import javax.net.ssl.SSLSocketFactory;
 
 import butterknife.Bind;
 import butterknife.ButterKnife;
@@ -34,6 +41,8 @@ import okio.ByteString;
 public class MainActivity extends AppCompatActivity {
 
     private TextView mTextMessage;
+    WebSocketClient webSocketClient;
+    final String TAG = "GDAX";
 
     private final String r_ADDRESS = "rLTncPPPNaXnhpmgHm1SVZyTwsy8zjn3CX";
     public String url;
@@ -106,13 +115,15 @@ public class MainActivity extends AppCompatActivity {
         mTextMessage = (TextView) findViewById(R.id.message);
         BottomNavigationView navigation = (BottomNavigationView) findViewById(R.id.navigation);
         navigation.setOnNavigationItemSelectedListener(mOnNavigationItemSelectedListener);
+
+        initWebSocket();
     }
 
     @OnClick(R.id.btnLoadDisplay)
     public void loadDisplay(){
-        //startActivity(new Intent(MainActivity.this, gDaxFeeder.class));
+        //startActivity(new Intent(MainActivity.this, gDaxTicker.class));
 
-        start();
+        //start();
         //setupDisplay();
     }
 
@@ -160,48 +171,79 @@ public class MainActivity extends AppCompatActivity {
             e.printStackTrace();
         }
     }
-    private void start() {
-        Request request = new Request.Builder().url("wss://ws-feed.gdax.com").build();
-        gdaxWebSocketListener listener = new gdaxWebSocketListener();
-        WebSocket ws = client.newWebSocket(request, listener);
-        client.dispatcher().executorService().shutdown();
-    }
-    private void output(final String txt) {
-        runOnUiThread(new Runnable() {
-            @Override
+
+    private void displayTicker(String mess) throws JSONException {
+        String fMessage;
+        try {
+            jsonObject = new JSONObject(mess);
+
+        } catch (JSONException e) {
+            e.printStackTrace();
+        }
+        if (jsonObject.isNull("price")){
+            fMessage = "null";
+        } else {
+            fMessage = jsonObject.getString("price");
+        }
+
+        runOnUiThread(new Runnable(){
             public void run() {
-                rAddress.setText(output.getText().toString() + "\n\n" + txt);
+                rAddress.setText(fMessage);
             }
         });
     }
 
-
-
-
-
-    private final class gdaxWebSocketListener extends WebSocketListener {
-        private static final int NORMAL_CLOSURE_STATUS = 1000;
-
-
-
-        @Override
-        public void onOpen(WebSocket webSocket, Response response) {
-            webSocket.send("");
-            webSocket.close(NORMAL_CLOSURE_STATUS, "Goodbye !");
-        }
-        @Override
-        public void onMessage(WebSocket webSocket, String text) {
-            rAddress.setText("Receiving : " + text);
-        }
-        @Override
-        public void onClosing(WebSocket webSocket, int code, String reason) {
-            webSocket.close(NORMAL_CLOSURE_STATUS, null);
-            rAddress.setText("Closing : " + code + " / " + reason);
-        }
-        @Override
-        public void onFailure(WebSocket webSocket, Throwable t, Response response) {
-            rAddress.setText("Error : " + t.getMessage());
-        }
+    private void subscribe() {
+        webSocketClient.send("{\n" +
+                "    \"type\": \"subscribe\",\n" +
+                "    \"channels\": [{ \"name\": \"ticker\", \"product_ids\": [\"BTC-USD\"] }]\n" +
+                "}");
     }
 
+    public void initWebSocket(){
+
+        URI gdaxURI = null;
+
+        try {
+            gdaxURI = new URI("wss://ws-feed.gdax.com");
+        } catch (URISyntaxException e) {
+            e.printStackTrace();
+        }
+
+        webSocketClient = new WebSocketClient(gdaxURI) {
+            @Override
+            public void onOpen(ServerHandshake handshakedata) {
+                Log.d(TAG, "ON OPEN : " + handshakedata);
+                subscribe();
+            }
+
+            @Override
+            public void onMessage(String message) {
+                Log.d(TAG, "MESSAGE!! : " + message);
+                try {
+                    displayTicker(message);
+                } catch (JSONException e) {
+                    e.printStackTrace();
+                }
+            }
+
+            @Override
+            public void onClose(int code, String reason, boolean remote) {
+                Log.d(TAG, "ON CLOSE : " + reason);
+            }
+
+            @Override
+            public void onError(Exception ex) {
+                Log.d(TAG, "ON ERROR : " + ex.getMessage());
+            }
+        };
+
+        SSLSocketFactory factory = (SSLSocketFactory) SSLSocketFactory.getDefault();
+        try {
+            webSocketClient.setSocket(factory.createSocket());
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        webSocketClient.connect();
+    }
 }
