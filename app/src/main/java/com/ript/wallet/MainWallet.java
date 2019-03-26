@@ -8,50 +8,45 @@ import android.util.Log;
 import android.view.Menu;
 import android.view.MenuInflater;
 import android.view.MenuItem;
+import android.widget.Button;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import com.ript.wallet.utils.rHelper;
+import com.google.gson.Gson;
+import com.ript.wallet.models.account_info;
+import com.ript.wallet.utils.rAccountHelper;
 
 import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.handshake.ServerHandshake;
-import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-import java.io.IOException;
-import java.net.URI;
-import java.net.URISyntaxException;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 
 import javax.net.ssl.SSLSocketFactory;
 
 import butterknife.Bind;
 import butterknife.ButterKnife;
-import okhttp3.OkHttpClient;
+import butterknife.OnClick;
 
 
 public class MainWallet extends AppCompatActivity {
 
     HashMap<String, String> keys = new HashMap<>();
     WebSocketClient webSocketClient;
-    final String TAG = "GDAX";
+    final String TAG = "RIPPLE";
     private Intent intent;
+    List<String> addresses = new ArrayList<>();
 
+    public account_info rootAccount;
     public boolean hasSecret;
 
-    String fName;
-    String fCurrency;
-    String fBalance;
-    String fInfoOne;
-    String fInfoTwo;
-
-    private final String r_ADDRESS = "rLTncPPPNaXnhpmgHm1SVZyTwsy8zjn3CX";
-    public String url;
+    public Gson gson = new Gson();
     public JSONObject jsonObject;
-    public OkHttpClient client;
-
-    HashMap<String, String> map = new HashMap<>();
+    public JSONObject resultObject;
+    public JSONObject accountObject;
 
     @Bind(R.id.dName) TextView dName;
     @Bind(R.id.dCurrency) TextView dCurrency;
@@ -59,12 +54,7 @@ public class MainWallet extends AppCompatActivity {
     @Bind(R.id.dInfoOne) TextView dInfoOne;
     @Bind(R.id.dInfoTwo) TextView dInfoTwo;
 
-
-    public void grabUserAddress(){
-
-        url = rHelper.url_ACCOUNT + r_ADDRESS;
-
-    }
+    @Bind(R.id.btnSendMessage) Button btnSendMessage;
 
     private BottomNavigationView.OnNavigationItemSelectedListener mOnNavigationItemSelectedListener
             = item -> {
@@ -119,107 +109,86 @@ public class MainWallet extends AppCompatActivity {
             }
         }
 
-        client = new OkHttpClient();
-
-        BottomNavigationView navigation = (BottomNavigationView) findViewById(R.id.navigation);
+        BottomNavigationView navigation = findViewById(R.id.navigation);
         navigation.setOnNavigationItemSelectedListener(mOnNavigationItemSelectedListener);
-
+        addresses.add(keys.get("address"));
         initWebSocket();
     }
 
-
-
-
-
-    private void setupDisplay(String mess) throws JSONException {
-
+    private void checkJsonObject(String mess) throws JSONException {
         try {
             jsonObject = new JSONObject(mess);
-
+            if (jsonObject.has(rAccountHelper.RESULT)){
+                resultObject = new JSONObject(jsonObject.getString(rAccountHelper.RESULT));
+                if (resultObject.has(rAccountHelper.ACCOUNT_DATA)){
+                    accountObject = new JSONObject(resultObject.getString(rAccountHelper.ACCOUNT_DATA));
+                    rootAccount = gson.fromJson(String.valueOf(accountObject), account_info.class);
+                    setupAccountInfoDisplay();
+                }
+            }
         } catch (JSONException e) {
             e.printStackTrace();
         }
-        if (jsonObject.isNull("status")){
-            fBalance = "null";
-            fCurrency = "null";
-            fInfoOne = "null";
-            fInfoTwo = "null";
-            fName = "null";
-        } else {
-            JSONObject deeper = new JSONObject(jsonObject.getString("result"));
-            JSONObject deepest = new JSONObject(deeper.getString("account_data"));
-            fName = deepest.getString("Account");
-            fBalance = deepest.getString("Balance");
-            //fInfoOne = jsonObject.getString("validated");
-        }
+    }
 
-        runOnUiThread(new Runnable(){
+    private void setupAccountInfoDisplay() {
+
+        runOnUiThread(new Runnable() {
+            @Override
             public void run() {
                 Toast.makeText(MainWallet.this, "Receiving...", Toast.LENGTH_LONG).show();
-                dBalance.setText(fBalance);
                 dCurrency.setText("XRP");
-                dInfoOne.setText(fInfoOne);
-                dName.setText(fName);
+                dBalance.setText(rootAccount.getBalance());
+                dInfoOne.setText(rootAccount.getIndex());
+                dName.setText(rootAccount.getAccount());
             }
         });
     }
 
-    private JSONObject createJsonObject(){
-
-
-        JSONObject subscribe = new JSONObject();
-        try {
-            subscribe.put("id", "2");
-            subscribe.put("command", "account_info");
-            subscribe.put("account", keys.get("address"));
-            subscribe.put("strict", "true");
-            subscribe.put("ledger_index", "current");
-            subscribe.put("queue", "true");
-        } catch (JSONException e) {
-            e.printStackTrace();
-        }
-
-        return subscribe;
+    @OnClick(R.id.btnSendMessage)
+    public void setBtnSendMessage(){
+        sendMessage(rAccountHelper.sendAccount_Info_Message(keys.get("address")));
     }
 
+    /**
+     *  WebSocket Tools
+     */
 
-    private void ripple() {
-        webSocketClient.send(String.valueOf(createJsonObject()));
+    // ON/OFF
+    private void toggleSocket(boolean enabled) {
+        if (enabled){
+            webSocketClient.connect();
+        } else {
+            webSocketClient.close();
+        }
+    }
+
+    // Send Request
+    private void sendMessage(String message) {
+        webSocketClient.send(message);
     }
 
     public void onSocketMessage(String message) {
-        runOnUiThread(new Runnable(){
-            public void run() {
-                Toast.makeText(MainWallet.this, message, Toast.LENGTH_LONG).show();
-            }
-        });
+        runOnUiThread(() -> Toast.makeText(MainWallet.this, message, Toast.LENGTH_LONG).show());
     }
 
+    //WebSocket Handling
     public void initWebSocket(){
 
-        URI gdaxURI = null;
-        //wss://ws-feed.gdax.com
-        //wss://s2.ripple.com:443
 
-        try {
-            gdaxURI = new URI("wss://s2.ripple.com:443");
-        } catch (URISyntaxException e) {
-            e.printStackTrace();
-        }
-
-        webSocketClient = new WebSocketClient(gdaxURI) {
+        webSocketClient = new WebSocketClient(rAccountHelper.getRippleS2()) {
             @Override
             public void onOpen(ServerHandshake handshakedata) {
                 Log.d(TAG, "ON OPEN : " + handshakedata);
                 onSocketMessage("Socket Open");
-                ripple();
+                sendMessage(String.valueOf(rAccountHelper.subscribeToAccountInfo(addresses)));
             }
 
             @Override
             public void onMessage(String message) {
-                Log.d(TAG, "MESSAGE!! : " + message);
+                Log.d(TAG, "RECEIVING MESSAGE!! : " + message);
                 try {
-                    setupDisplay(message);
+                    checkJsonObject(message);
                 } catch (JSONException e) {
                     e.printStackTrace();
                 }
@@ -238,11 +207,7 @@ public class MainWallet extends AppCompatActivity {
         };
 
         SSLSocketFactory factory = (SSLSocketFactory) SSLSocketFactory.getDefault();
-        try {
-            webSocketClient.setSocket(factory.createSocket());
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-        webSocketClient.connect();
+        webSocketClient.setSocketFactory(factory);
+        toggleSocket(true);
     }
 }
